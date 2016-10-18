@@ -1,0 +1,209 @@
+---
+title: "Institutions of Higher Education Default Rates"
+output:
+  html_notebook: default
+  html_document: default
+---
+
+The National Student Loan Data Set is updated once a year. The data shows the percent of students that entered repayment and the percent that defaulted on their loans. In this first post, I will clean the data and provide some descriptive of the data set. 
+
+The code below loads the data and the required packages for the exploratory analysis. To simplify the data set, I have removed non-degree seeking institutions and institutions outside of the US.
+
+```{r Packages and Data, message=FALSE, warning=TRUE}
+#connect all libraries
+library(dplyr)
+library(stringr)
+library(ggplot2)
+require(RCurl)
+library(ggmap)
+library(mapproj)
+require(reshape2)
+require(tidyr)
+library(maps)
+setwd("~/Desktop")
+data_o <- read.csv("peps300.csv",header = T)
+
+
+
+data_2 <- subset(data_o,data_o$Prog.Length == 5 | 
+                         data_o$Prog.Length == 6 | 
+                         data_o$Prog.Length == 8 | 
+                         data_o$Prog.Length == 12)
+
+data <- subset(data_2,Region!=11)
+
+
+data$Prog.Length <- ordered(data$Prog.Length,
+                         levels=c(0,1,2,3,4,5,6,7,8,9,10,11,12),
+                         labels=c('Short-Term (300–599 hours)', 
+                                  "Graduate/Professional (≥ 300 hours)", 
+                                  'Non-Degree (600–899 hours)',
+                                  'Non-Degree 1 Year (900–1799 hours)',
+                                  'Non-Degree 2 Years (1800–2699 hours)', 
+                                  'Associate Degree',
+                                  'Bachelor Degree',
+                                  'First Professional Degree',
+                                  'Masters Degree or Doctors Degree',
+                                  'Professional Certification',
+                                  'Undergraduate (Previous Degree Required)',
+                                  'non-Degree 3 Plus Years (≥ 2700 hours)',
+                                  'Two-Year Transfer'))
+
+data$Region <- ordered(data$Region,
+                          levels=c(1,2,3,4,5,6,7,8,9,10),
+                          labels=c('Region 1', "Region 2", 'Region 3','Region 4','Region 5', 'Region 6','Region 7','Region 8','Region 9','Region 10'))
+
+data$School.Type <- ordered(data$School.Type,
+                       levels=c(1,2,3,5,6,7),
+                       labels=c('Public', "Private, Nonprofit", 'Proprietary','Foreign public','Foreign private', 'Foreign For-Profit'))
+
+```
+
+The histogram below shows the distribution of the default rates. The data are positively skewed with some institutions having default rates above 30 percent. 
+
+```{r}
+ggplot(data,aes(x=DRate.1))+
+        geom_histogram(bins=20,fill = "#faaca7",colour = 'black')+
+        # Dispose of the legend
+        theme(legend.position="none") +
+        # Set title and axis labels, and format these and tick marks
+        ggtitle("Distribution of Student Loan Default Rates") +
+        theme(plot.title=element_text(face="bold",hjust=0,vjust=2,colour="#3C3C3C",size=20)) +
+        ylab("Frequency") +
+        xlab("Default Rate")  
+
+
+```
+
+First we need to understand what the institutions of higher education look like. The chart below shows the frequency of institution type within our data set. The majority of the institutions throughout the US are either public or private (non-profit). Roughly 500 institutions are Private for college institutions. 
+
+```{r}
+ggplot(data,aes(x=School.Type))+
+        geom_bar(fill = "#faaca7",colour = 'black')+
+        # Dispose of the legend
+        theme(legend.position="none") +
+        # Set title and axis labels, and format these and tick marks
+        ggtitle("Frequency of Institutional Type") +
+        theme(plot.title=element_text(face="bold",hjust=0,vjust=2,colour="#3C3C3C",size=20)) +
+        ylab("Frequency") +
+        xlab("Institution Type")  
+```
+
+The program length variable reports the highest degree that an institution offers. The majority of institutions offered Master's Degrees or above. 
+
+```{r}
+ggplot(data,aes(x=Prog.Length))+
+        geom_bar()+coord_flip()+
+        geom_bar(fill = "#faaca7",colour = 'black')+
+         # Dispose of the legend
+        theme(legend.position="none") +
+        # Set title and axis labels, and format these and tick marks
+        ggtitle("Frequency of Institution Length") +
+        theme(plot.title=element_text(face="bold",hjust=-4,vjust=2,colour="#3C3C3C",size=15)) +
+        ylab("Frequency") +
+        xlab("Highest Degree Offered") 
+```
+
+Institutions of higher education are scattered throughout the United states. The frequency table below shows the distribution of frequency of the institutions by region. The department of education regions can be found here: http://www2.ed.gov/about/contacts/gen/regions.html
+
+```{r}
+ggplot(data,aes(x=Region))+
+        geom_bar()+
+        geom_bar(fill = "#faaca7",colour = 'black')+
+        # Dispose of the legend
+        theme(legend.position="none") +
+        # Set title and axis labels, and format these and tick marks
+        ggtitle("Frequency of Institutions by Region") +
+        theme(plot.title=element_text(face="bold",hjust=0,vjust=2,colour="#3C3C3C",size=15)) +
+        ylab("Frequency") +
+        xlab("Default Rate") 
+```
+
+The next question that I was interested in asking related to the states. Which states have the highest student loan default rates and which states have made the most progress in improving their rates. The map below shows the default rates for the continental United States. The darker the state the higher the default rate. 
+
+
+```{r}
+all_states <- map_data("state")
+all_states
+head(all_states)
+data$region <- tolower(data$State.Desc)
+trim.trailing <- function (x) sub("\\s+$", "", x)
+data$region <- trim.trailing(data$region)
+states <- tbl_df(data)%>%group_by(region,Region)%>%summarise(yr1.num = sum(X.Num.1,na.rm=T),
+                                                            yr1.den=sum(X.Denom.1,na.rm=T),
+                                                            yr2.num = sum(Dual.Num.2,na.rm=T),
+                                                            yr2.den=sum(Dual.Denom.2,na.rm=T),
+                                                            yr3.num = sum(Dual.Num.3,na.rm=T),
+                                                            yr3.den=sum(Dual.Denom.3,na.rm=T))%>%
+        mutate(yr1.rate = yr1.num/yr1.den,
+               yr2.rate = yr2.num/yr2.den,
+               yr3.rate = yr3.num/yr3.den)
+
+trim.trailing <- function (x) sub("\\s+$", "", x)
+states$region <- trim.trailing(states$region)
+Total <- left_join(all_states, states, by="region")
+
+ggplot() +coord_equal()+
+        geom_polygon(data=Total, aes(x=long, y=lat, group = group, fill=Total$yr1.rate),colour="white") + 
+        
+        scale_fill_continuous(low = "thistle2", high = "darkred", guide="colorbar") + 
+        theme_bw()  + 
+        labs(fill = "Default Rate" 
+                             ,title = "Student Loan Default Rates by State, 2013 Cohort", x="", y="")+
+        scale_y_continuous(breaks=c()) + 
+        scale_x_continuous(breaks=c()) + 
+        theme(panel.border =  element_blank())
+
+
+```
+
+
+The national student loan default rate for the 2013 cohort was 11.17%. The chart below shows the states ranked by highest to lowest student loan default rate. The line down the middle shows the national default rate and the red and blue represent states that are above and below the national average. 
+
+```{r, fig.height=8, fig.width=6}
+states <- tbl_df(data)%>%group_by(State,Region)%>%summarise(yr1.num = sum(X.Num.1,na.rm=T),
+                                     yr1.den=sum(X.Denom.1,na.rm=T),
+                                     yr2.num = sum(Dual.Num.2,na.rm=T),
+                                     yr2.den=sum(Dual.Denom.2,na.rm=T),
+                                     yr3.num = sum(Dual.Num.3,na.rm=T),
+                                     yr3.den=sum(Dual.Denom.3,na.rm=T))%>%
+        mutate(yr1.rate = yr1.num/yr1.den,
+               yr2.rate = yr2.num/yr2.den,
+               yr3.rate = yr3.num/yr3.den)
+
+
+
+states$compare <- ifelse(states$yr1.rate > .1117924,'Above','Below')
+
+ggplot(states,aes(y=yr1.rate,x=reorder(State,yr1.rate),fill=compare))+
+        geom_bar(stat='identity')+
+        coord_flip()+
+        # Dispose of the legend
+        labs(fill = 'Above/Below \n Average')+
+        geom_hline(yintercept = .1117924)+
+        # Set title and axis labels, and format these and tick marks
+        ggtitle("Student Loan Default Rate by State \n (ranked highest to lowest)") +
+        theme(plot.title=element_text(face="bold",hjust=0,vjust=2,colour="#3C3C3C",size=15)) +
+        ylab("Frequency") +
+        xlab("States") 
+```
+
+I was also curious about which states had made the most progress toward improving their student loan default rate. The chart below shows the default rate change in default rate from 2012 to 2013 cohorts. 
+
+```{r, fig.height=8, fig.width=6}
+states$change <- (states$yr1.rate - states$yr2.rate)/states$yr2.rate
+
+ggplot(states,aes(y=change,x=reorder(State,change),fill=compare))+
+        geom_bar(stat='identity')+
+        coord_flip()+
+        ylim(-.3,.3)+
+        # Dispose of the legend
+        labs(fill = 'Above/Below \n Average')+
+        # Set title and axis labels, and format these and tick marks
+        ggtitle("Percentage Change in Student Loan Default rate \n 2012 to 2013 cohort") +
+        theme(plot.title=element_text(face="bold",hjust=0,vjust=2,colour="#3C3C3C",size=15)) +
+        ylab("Frequency") +
+        xlab("States") 
+```
+
+This is my first post related to data in higher education. I hope to post a weekly blog about open data in higher education. If you have ideas about higher ed data or questions related to this post send me a tweet (@datadanlarson). 
